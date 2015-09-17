@@ -1,9 +1,12 @@
 # pika-mirror
+
+**Pika Mirror does not exist yet.  This documents what it will be.**
+
 Pika Mirror will back up old files, some of which may themselves be backups, onto new storage unit(s).
 
 ## How to build it
 
-PikaMirror is written in Scala and built with SBT.  You will have to build it yourself.
+Pika Mirror is written in Scala and built with SBT.  You will have to build it yourself.
 
 It depends on the Kerr Scala Extensions (KSE), which SBT will maybe grab for you.  If not, get it yourself, `sbt package` it, and drop a link to the jar in `/lib`.
 
