@@ -6,9 +6,7 @@ Pika Mirror will back up old files, some of which may themselves be backups, ont
 
 ## How to build it
 
-Pika Mirror is written in Scala and built with SBT.  You will have to build it yourself.
-
-It depends on the Kerr Scala Extensions (KSE), which SBT will maybe grab for you.  If not, get it yourself, `sbt package` it, and drop a link to the jar in `/lib`.
+Pika Mirror is written in Scala and built with SBT.  You will have to build it yourself.  It has no dependencies.
 
 ## How to use it
 
@@ -24,7 +22,7 @@ Pika will traverse through the entire directory hierarchy rooted at `foo/baz`, w
 
 Pika will be listening to keyboard input while it works.  If you want to abort a run and have it save its partial progress, type `stop` at the command-line and it will stop when it is convenient to do so.
 
-Once Pika has understood a directory, it can back it up / mirror it.  You can tell it
+Once Pika has understood a directory, it can mirror it.  You can tell it
 
 ```bash
 scala -jar Pika.jar mirror foo/baz as tybble into bar/quux
