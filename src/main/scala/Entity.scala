@@ -10,7 +10,11 @@ import scala.util.hashing.{ MurmurHash3 => mh3 }
 
 import kse.maths.hashing._
 
-case class Entity(m3: Int, xx: Int, xx2: Long, name: String, where: String, also: Vector[(String, String)]) {}
+case class Entity(m3: Int, xx: Int, xx2: Long, name: String, where: String) {
+  override def hashCode = m3 ^ xx ^ (xx2 & 0xFFFFFFFFL).toInt ^ (xx2 >>> 32).toInt
+  override def toString = "%08x%08x%016x '%s' '%s'".format(m3, xx, xx2, where, name)
+}
+
 object Entity {
   private final def partialBytesHash(seed: Int, a: Array[Byte], i0: Int, iN: Int, totalSize: Option[Int] = None): Int = {
     var i = math.max(0, math.min(a.length, i0))
@@ -98,7 +102,7 @@ object Entity {
       buffer.position(0).limit(iN)
       val x64 = xx64.result(buffer)
       Try { src.close } match { case Failure(f) => return Failure(f); case _ => }
-      Success(new Entity(hash, x32, x64, name, path, Vector.empty))
+      Success(new Entity(hash, x32, x64, name, path))
     }
     catch { case NonFatal(t) => Try{ src.close }; Failure(t) }
   }
@@ -116,29 +120,51 @@ object Entity {
     val buffer = ByteBuffer.wrap(array)
     val fis = Try{ new FileInputStream(c) } match { case Failure(f) => return Failure(f); case Success(x) => x }
     val fc = Try{ fis.getChannel } match { case Failure(f) => Try{ fis.close }; return Failure(f); case Success(x) => x }
-    val result =
-      if (buffer.capacity >= sz) {
-        while ({
-          Try{ fc.read(buffer) } match {
-            case Failure(f) => Try{ fc.close }; return Failure(f)
-            case Success(x) => x >= 0
-          } 
-        }) {}
-        if (buffer.position < sz) {
-          Try{ fc.close }
-          return Failure(new IOException(s"Read only ${buffer.remaining} of $sz bytes from ${c.getPath}"))
+    var total = 0L
+    val result = {
+      var chances = 100
+      while (buffer.capacity < sz - total) {
+        val n = Try{ fc.read(buffer) } match {
+          case Failure(f) => Try{ fc.close }; return Failure(f)
+          case Success(x) => x
         }
-        Try{ fc.close } match { case Failure(f) => return Failure(f); case _ => }
-        buffer.flip
-        val n = buffer.remaining
-        var i = 0
-        hash = partialBytesHash(hash, array, 0, n, Some(sz.toInt))
-        val x32 = xx32.result(buffer)
-        buffer.rewind
-        val x64 = xx64.result(buffer)
-        new Entity(hash, x32, x64, c.getName, Try{ cr.getParentFile.getPath } match { case Success(x) => x; case _ => "" }, Vector.empty)
+        if (n > 0) {
+          chances += 10
+          total += n
+          buffer.flip
+          xx64(buffer)
+          val m = buffer.position
+          val l = buffer.limit
+          buffer.position(0).limit(m)
+          xx32(buffer)
+          hash = partialBytesHash(hash, array, 0, m)
+          if (m < l) System.arraycopy(array, m, array, 0, l-m)
+          buffer.position(l-m).limit(array.length)
+        }
+        else if (n < 0 && total < sz) return Failure(new IOException(s"Unable to read expected $sz bytes from ${c.getPath}"))
+        else if (chances <= 0) return Failure(new IOException("No progress made reading "+c.getPath))
+        else chances -= 1
       }
-      else ???
+      while ({
+        Try{ fc.read(buffer) } match {
+          case Failure(f) => Try{ fc.close }; return Failure(f)
+          case Success(x) => x >= 0
+        } 
+      }) {}
+      if (buffer.position < sz - total) {
+        Try{ fc.close }
+        return Failure(new IOException(s"Read only ${buffer.remaining+total} of $sz bytes from ${c.getPath}"))
+      }
+      Try{ fc.close } match { case Failure(f) => return Failure(f); case _ => }
+      buffer.flip
+      val n = buffer.remaining
+      var i = 0
+      hash = partialBytesHash(hash, array, 0, n, Some(sz.toInt))
+      val x32 = xx32.result(buffer)
+      buffer.rewind
+      val x64 = xx64.result(buffer)
+      new Entity(hash, x32, x64, c.getName, Try{ cr.getParentFile.getPath } match { case Success(x) => x; case _ => "" })
+    }
     maybeCacheArray(array)
     Success(result)
   }
