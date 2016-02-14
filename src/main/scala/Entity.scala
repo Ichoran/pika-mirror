@@ -1,3 +1,7 @@
+// This file is part of Pika-Mirror.
+// Copyright Rex Kerr, 2016.
+// Distributed under the Apache 2 License.
+
 package XJ.pika
 
 import java.io._
