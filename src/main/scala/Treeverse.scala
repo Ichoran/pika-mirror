@@ -29,6 +29,8 @@ class Treeverse[A](
   def mapValues[B](f: Treeverse[A] => B): Treeverse[B] = new Treeverse[B](me, sub.map(_.mapValues(f)), files, zips, links, f(this))
   def foreach[U](f: Treeverse[A] => U) { f(this); sub.foreach(_.foreach(f)) }
   def foreachPath[U](f: Path => U) { f(me); files.foreach(f); zips.foreach(f); links.foreach(f); sub.foreach(_.foreachPath(f)) }
+  def foreachFile[U](f: Path => U) { files.foreach(f); sub.foreach(_.foreachFile(f)) }
+  def foreachZip[U](f: Path => U) { zips.foreach(f); sub.foreach(_.foreachZip(f)) }
 }
 
 object Treeverse{
