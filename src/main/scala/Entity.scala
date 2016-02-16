@@ -16,7 +16,7 @@ import kse.maths.hashing._
 
 case class Entity(m3: Int, xx: Int, xx2: Long, name: String, where: String) {
   override def hashCode = m3 ^ xx ^ (xx2 & 0xFFFFFFFFL).toInt ^ (xx2 >>> 32).toInt
-  override def toString = "%08x%08x%016x '%s' '%s'".format(m3, xx, xx2, where, name)
+  override def toString = "%08x%08x%016x '%s'/'%s'".format(m3, xx, xx2, where, name)
 }
 
 object Entity {
