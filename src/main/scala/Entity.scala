@@ -13,13 +13,15 @@ import scala.util.control.NonFatal
 import scala.util.hashing.{ MurmurHash3 => mh3 }
 
 import kse.maths.hashing._
+import kse.jsonal._
 
-case class Entity(m3: Int, xx: Int, xx2: Long, name: String, where: String) {
+case class Entity(m3: Int, xx: Int, xx2: Long, name: String, where: String) extends Jsonable {
   override def hashCode = m3 ^ xx ^ (xx2 & 0xFFFFFFFFL).toInt ^ (xx2 >>> 32).toInt
   override def toString = "%08x%08x%016x '%s'/'%s'".format(m3, xx, xx2, where, name)
+  def toJson = JsObj.build~("m3", m3)~("xx", xx)~("xx2", xx2)~("name", name)~("where", where).result
 }
 
-object Entity {
+object Entity extends JsonableCompanion[Entity] {
   private final def partialBytesHash(seed: Int, a: Array[Byte], i0: Int, iN: Int, totalSize: Option[Int] = None): Int = {
     var i = math.max(0, math.min(a.length, i0))
     val iM = math.min(a.length, math.max(iN, i))
