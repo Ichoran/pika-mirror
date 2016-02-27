@@ -10,6 +10,8 @@ import java.nio.file._
 import scala.util._
 import scala.util.control.NonFatal
 
+import minij._
+
 class Treeverse[A](
   val me: Path,
   val sub: Array[Treeverse[A]],
@@ -17,7 +19,8 @@ class Treeverse[A](
   val zips: Array[Path],
   val links: Array[Path],
   val value: A
-) {
+)(implicit ev: MiniJ[A]) extends ToJs {
+  import Treeverse.pathHasAMiniJ
   override def hashCode = me.hashCode
   override lazy val toString = 
     if (sub.isEmpty && files.isEmpty && zips.isEmpty && links.isEmpty) s"'$me'"
@@ -26,15 +29,19 @@ class Treeverse[A](
     case tv: Treeverse[_] => me == tv.me && value == tv.value
     case _ => false
   }
-  def mapValues[B](f: Treeverse[A] => B): Treeverse[B] = new Treeverse[B](me, sub.map(_.mapValues(f)), files, zips, links, f(this))
+  def mapValues[B: MiniJ](f: Treeverse[A] => B): Treeverse[B] = new Treeverse[B](me, sub.map(_.mapValues(f)), files, zips, links, f(this))
   def foreach[U](f: Treeverse[A] => U) { f(this); sub.foreach(_.foreach(f)) }
   def foreachPath[U](f: Path => U) { f(me); files.foreach(f); zips.foreach(f); links.foreach(f); sub.foreach(_.foreachPath(f)) }
   def foreachFile[U](f: Path => U) { files.foreach(f); sub.foreach(_.foreachFile(f)) }
   def foreachZip[U](f: Path => U) { zips.foreach(f); sub.foreach(_.foreachZip(f)) }
-  //def toJson = JsObj.build~("me", me)~("sub", sub)~("files", files)~("zips", zips)~("links", links)~("value", value).result
+  def toJson =
+    JObj ~ ("me", me) ~ ("sub", sub) ~ ("files", files) ~ ("zips", zips) ~ ("links", links) ~ ("value", value) ~ JObj
 }
 
 object Treeverse{
+  implicit val pathHasAMiniJ: MiniJ[Path] = new MiniJ[Path] { def asJs(p: Path) = JStr(p.toString) }
+  implicit val booleanHasAFakeMiniJ: MiniJ[Boolean] = new MiniJ[Boolean] { def asJs(b: Boolean) = JStr(b.toString) }
+
   private val emptySubs = Array[Treeverse[Boolean]]()
   private val emptyPaths = Array[Path]()
 
