@@ -10,8 +10,6 @@ import java.nio.file._
 import scala.util._
 import scala.util.control.NonFatal
 
-import kse.jsonal._
-
 class Treeverse[A](
   val me: Path,
   val sub: Array[Treeverse[A]],
@@ -19,7 +17,7 @@ class Treeverse[A](
   val zips: Array[Path],
   val links: Array[Path],
   val value: A
-) extends Jsonable {
+) {
   override def hashCode = me.hashCode
   override lazy val toString = 
     if (sub.isEmpty && files.isEmpty && zips.isEmpty && links.isEmpty) s"'$me'"
