@@ -16,14 +16,48 @@ import kse.maths.hashing._
 
 import minij._
 
-case class Entity(m3: Int, xx: Int, xx2: Long, name: String, where: String) {
+case class Entity(m3: Int, xx: Int, xx2: Long, size: Long, name: String, where: Array[String])
+extends ToJs {
   override def hashCode = m3 ^ xx ^ (xx2 & 0xFFFFFFFFL).toInt ^ (xx2 >>> 32).toInt
-  override def toString = "%08x%08x%016x '%s'/'%s'".format(m3, xx, xx2, where, name)
+  override def toString = "%08x%08x%016x %d '%s' / '%s'".format(m3, xx, xx2, size, where.mkString("'/'"), name)
+  def toJson = Entity.entityMiniJ.asJs(this)
 }
 
-object Entity {
+object Entity extends FromJson[Entity] {
   implicit val entityMiniJ: MiniJ[Entity] = new MiniJ[Entity] {
-    def asJs(e: Entity): JObj = JObj ~ ("hash", "%08x%08x%016x".format(e.m3, e.xx, e.xx2)) ~ ("name", e.name) ~ ("where", e.where) ~ JObj
+    def asJs(e: Entity): JObj = 
+      JObj ~ 
+      ("hash", "%08x%08x%016x".format(e.m3, e.xx, e.xx2)) ~ 
+      ("size", "%016x".format(e.size)) ~
+      ("name", e.name) ~ 
+      ("where", e.where) ~ 
+      JObj
+  }
+  def parse(js: Js): Entity = js match {
+    case j: JObj =>
+      var hashstr: String = null
+      var sizestr: String = null
+      var namestr: String = null
+      var wherearr: JArr = null
+      var i = 0
+      while (i < j.kvs.length-1) {
+        j.kvs(i).asInstanceOf[JStr].value match {
+          case "hash" => hashstr = j.kvs(i+1).asInstanceOf[JStr].value
+          case "size" => sizestr = j.kvs(i+1).asInstanceOf[JStr].value
+          case "name" => namestr = j.kvs(i+1).asInstanceOf[JStr].value
+          case "where" => wherearr = j.kvs(i+1).asInstanceOf[JArr]
+        }
+        i += 2
+      }
+      if (hashstr == null || sizestr == null || namestr == null || wherearr == null || i != 8)
+        throw new IllegalArgumentException("Missing or duplicate fields in Entity")
+      val m3 = java.lang.Integer.parseInt(hashstr.substring(0, 8), 16)
+      val xx = java.lang.Integer.parseInt(hashstr.substring(8, 16), 16)
+      val x2 = java.lang.Integer.parseInt(hashstr.substring(16, 32), 16)
+      val sz = java.lang.Integer.parseInt(sizestr, 16)
+      val wh = wherearr.values.map(_.asInstanceOf[JStr].value)
+      new Entity(m3, xx, x2, sz, namestr, wh) 
+    case _ => throw new IllegalArgumentException("Not an Entity (not even a JSON object)")
   }
   private final def partialBytesHash(seed: Int, a: Array[Byte], i0: Int, iN: Int, totalSize: Option[Int] = None): Int = {
     var i = math.max(0, math.min(a.length, i0))
@@ -111,7 +145,7 @@ object Entity {
       buffer.position(0).limit(iN)
       val x64 = xx64.result(buffer)
       Try { src.close } match { case Failure(f) => return Failure(f); case _ => }
-      Success(new Entity(hash, x32, x64, name, path))
+      Success(new Entity(hash, x32, x64, total, name, Array(path)))
     }
     catch { case NonFatal(t) => Try{ src.close }; Failure(t) }
   }
@@ -172,7 +206,7 @@ object Entity {
       val x32 = xx32.result(buffer)
       buffer.rewind
       val x64 = xx64.result(buffer)
-      new Entity(hash, x32, x64, c.getName, Try{ cr.getParentFile.getPath } match { case Success(x) => x; case _ => "" })
+      new Entity(hash, x32, x64, sz, c.getName, Array(Try{ cr.getParentFile.getPath } match { case Success(x) => x; case _ => "" }))
     }
     maybeCacheArray(array)
     Success(result)
