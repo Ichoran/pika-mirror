@@ -38,10 +38,37 @@ class Treeverse[A](
     JObj ~ ("me", me) ~ ("sub", sub) ~ ("files", files) ~ ("zips", zips) ~ ("links", links) ~ ("value", value) ~ JObj
 }
 
-object Treeverse{
+object Treeverse {
   implicit val pathHasAMiniJ: MiniJ[Path] = new MiniJ[Path] { def asJs(p: Path) = JStr(p.toString) }
-  implicit val booleanHasAFakeMiniJ: MiniJ[Boolean] = new MiniJ[Boolean] { def asJs(b: Boolean) = JStr(b.toString) }
 
+  def parser[A](mkJ: FromJson[A])(implicit ev: MiniJ[A]): FromJson[Treeverse[A]] = new FromJson[Treeverse[A]] {
+    def parse(js: Js): Treeverse[A] = js match {
+      case j: JObj =>
+        var mestr: String = null
+        var subarr: Array[Treeverse[A]] = Array()
+        var files: Array[Path] = emptyPaths
+        var zips: Array[Path] = emptyPaths
+        var links: Array[Path] = emptyPaths
+        var vj: Js = null
+        var i = 0
+        while (i < j.kvs.length-1) {
+          j.kvs(i).asInstanceOf[JStr].value match {
+            case "me" => mestr = j.kvs(i+1).asInstanceOf[JStr].value
+            case "sub" => subarr = j.kvs(i+1).asInstanceOf[JArr].values.map(x => parse(x))
+            case "files" => files = j.kvs(i+1).asInstanceOf[JArr].values.map(x => (new File(x.asInstanceOf[JStr].value)).toPath)
+            case "zips" => zips = j.kvs(i+1).asInstanceOf[JArr].values.map(x => (new File(x.asInstanceOf[JStr].value)).toPath)
+            case "links" => links = j.kvs(i+1).asInstanceOf[JArr].values.map(x => (new File(x.asInstanceOf[JStr].value)).toPath)
+            case "value" => vj = j.kvs(i+1)
+          }
+          i += 2
+        }
+        if (mestr == null || i > 12)
+          throw new IllegalArgumentException("Missing or duplicate fields in Entity")
+        new Treeverse((new File(mestr)).toPath, subarr, files, zips, links, mkJ parse vj)
+      case _ => throw new IllegalArgumentException("Expected JSON corresponding to Treeverse, but not even an object")
+    }
+  }
+  
   private val emptySubs = Array[Treeverse[Boolean]]()
   private val emptyPaths = Array[Path]()
 
