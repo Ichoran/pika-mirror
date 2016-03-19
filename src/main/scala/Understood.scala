@@ -12,20 +12,35 @@ import java.util.zip._
 import scala.util._
 import scala.util.control.NonFatal
 
-case class Attributed(exec: Boolean, time: attribute.FileTime, zipped: Boolean, size: Long) {}
+case class Attributed(exec: Boolean, time: attribute.FileTime, zipped: Boolean, size: Long)
+extends ToJs {
+  def toJson: Js = JObj ~ ("exec", exec) ~ ("time", time) ~ ("zip" ~ zipped) ~ ("size", "%016d".format(size)) ~ JObj
+}
+
+case class Alternative(path: Path, internal: Option[String], attributes: Attributed)
+extends ToJs {
+  def toJson: Js = JObj ~ ("path" ~ path) ~? ("internal", internal) ~ ("attr", attributes) ~ JObj
+}
 
 class Understood(
   val path: Path,
   val internal: Option[String],
   val attributes: Attributed,
   val content: Entity,
-  val alternates: Array[(Path, Option[String], Attributed)]
-) {
+  val alternates: Array[Alternative]
+) extends ToJs {
+  import Understood.pathHasAMiniJ
   override def hashCode = content.hashCode
   override def toString = if (internal.isEmpty) s"'$path' is $content" else s"'$path'//'${internal.get}' is $content"
+  def toJson: Js = {
+    val x = JObj ~ ("path", path)
+    if (internal.nonEmpty) x ~ ("internal", internal.get)
+    x ~ ("attr", attributed) ~ ("content", content) ~ ("alt", alternates) ~ JObj
+  }
 }
 
 object Understood {
+  implicit val pathHasAMiniJ: MiniJ[Path] = new MiniJ[Path] { def asJs(p: Path) = JStr(p.toString) }
   private val emptyAlternate = Array[(Path, Option[String], Attributed)]()
 
   def apply(root0: File): Try[Array[Understood]] = {
