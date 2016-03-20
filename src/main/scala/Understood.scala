@@ -2,6 +2,7 @@
 // Copyright Rex Kerr, 2016.
 // Distributed under the Apache 2 License.
 
+/*
 package XJ.pika
 
 import java.io._
@@ -81,3 +82,5 @@ object Understood {
 
   def apply(root: String): Try[Array[Understood]] = apply(new File(root))
 }
+
+*/

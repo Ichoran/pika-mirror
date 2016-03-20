@@ -2,6 +2,8 @@
 // Copyright Rex Kerr, 2016.
 // Distributed under the Apache 2 License.
 
+/*
+
 package XJ.pika
 
 import java.io._
@@ -121,3 +123,5 @@ object Treeverse {
 
   def apply(root: String): Try[Treeverse[Boolean]] = apply(new File(root))
 }
+
+*/

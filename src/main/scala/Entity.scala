@@ -14,50 +14,56 @@ import scala.util.hashing.{ MurmurHash3 => mh3 }
 
 import kse.maths.hashing._
 
-import minij._
+import kse.jsonal._
+import JsonConverters._
 
 case class Entity(m3: Int, xx: Int, xx2: Long, size: Long, name: String, where: Array[String])
-extends ToJs {
+extends AsJson {
   override def hashCode = m3 ^ xx ^ (xx2 & 0xFFFFFFFFL).toInt ^ (xx2 >>> 32).toInt
   override def toString = "%08x%08x%016x %d '%s' / '%s'".format(m3, xx, xx2, size, where.mkString("'/'"), name)
-  def toJson = Entity.entityMiniJ.asJs(this)
+  override def equals(a: Any) = a match {
+    case e: Entity => m3 == e.m3 && xx == e.xx && xx2 == e.xx2 && size == e.size
+    case _         => false
+  }
+  def json = Json ~ 
+    ("hash", "%08x%08x%016x".format(m3, xx, xx2)) ~
+    ("size", Json.Num(size)) ~
+    ("name", name) ~
+    ("where", where) ~
+    Json
 }
 
 object Entity extends FromJson[Entity] {
-  implicit val entityMiniJ: MiniJ[Entity] = new MiniJ[Entity] {
-    def asJs(e: Entity): JObj = 
-      JObj ~ 
-      ("hash", "%08x%08x%016x".format(e.m3, e.xx, e.xx2)) ~ 
-      ("size", "%016x".format(e.size)) ~
-      ("name", e.name) ~ 
-      ("where", e.where) ~ 
-      JObj
-  }
-  def parse(js: Js): Entity = js match {
-    case j: JObj =>
-      var hashstr: String = null
-      var sizestr: String = null
-      var namestr: String = null
-      var wherearr: JArr = null
-      var i = 0
-      while (i < j.kvs.length-1) {
-        j.kvs(i).asInstanceOf[JStr].value match {
-          case "hash" => hashstr = j.kvs(i+1).asInstanceOf[JStr].value
-          case "size" => sizestr = j.kvs(i+1).asInstanceOf[JStr].value
-          case "name" => namestr = j.kvs(i+1).asInstanceOf[JStr].value
-          case "where" => wherearr = j.kvs(i+1).asInstanceOf[JArr]
-        }
-        i += 2
+  import Json._
+  import java.lang.Integer.{parseUnsignedInt => jParseUInt}
+  import java.lang.Long.{parseUnsignedLong => jParseULong}
+  def parse(js: Json): Either[JastError, Entity] = js match {
+    case j: Obj =>
+      val hashstr: String = j("hash") match { case s: Str => s.text; case _ => return Left(JastError("No hash")) }
+      val sizenum: Long = j("size") match { 
+        case n: Num if n.isLong => n.long
+        case _ => return Left(JastError("No size or size doesn't fit in Long"))
       }
-      if (hashstr == null || sizestr == null || namestr == null || wherearr == null || i != 8)
-        throw new IllegalArgumentException("Missing or duplicate fields in Entity")
-      val m3 = java.lang.Integer.parseInt(hashstr.substring(0, 8), 16)
-      val xx = java.lang.Integer.parseInt(hashstr.substring(8, 16), 16)
-      val x2 = java.lang.Integer.parseInt(hashstr.substring(16, 32), 16)
-      val sz = java.lang.Integer.parseInt(sizestr, 16)
-      val wh = wherearr.values.map(_.asInstanceOf[JStr].value)
-      new Entity(m3, xx, x2, sz, namestr, wh) 
-    case _ => throw new IllegalArgumentException("Not an Entity (not even a JSON object)")
+      var namestr: String = j("name") match { case s: Str => s.text; case _ => return Left(JastError("No name")) }
+      var wherearr: Array[String] = j("where") match {
+        case a: Arr =>
+          val wa = new Array[String](a.size)
+          var i = 0
+          while (i < wa.length) {
+            a(i) match {
+              case s: Str => wa(i) = s.text
+              case _ => return Left(JastError(f"Entry ${i+1} of where is not a string"))
+            }
+            i += 1
+          }
+          wa
+        case _ => return Left(JastError("Where is not just strings"))
+      }
+      val m3 = try { jParseUInt(hashstr.substring(0, 8), 16) } catch { case NonFatal(_) => return Left(JastError("Bad m3")) }
+      val xx = try { jParseUInt(hashstr.substring(8, 16), 16) } catch { case NonFatal(_) => return Left(JastError("Bad xx")) }
+      val x2 = try{ jParseULong(hashstr.substring(16, 32), 16) } catch { case NonFatal(_) => return Left(JastError("Bad xx2")) }
+      Right(new Entity(m3, xx, x2, sizenum, namestr, wherearr))
+    case _ => Left(JastError("Not an Entity (not even a JSON object)", because = js))
   }
   private final def partialBytesHash(seed: Int, a: Array[Byte], i0: Int, iN: Int, totalSize: Option[Int] = None): Int = {
     var i = math.max(0, math.min(a.length, i0))
