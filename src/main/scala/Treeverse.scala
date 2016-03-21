@@ -2,7 +2,6 @@
 // Copyright Rex Kerr, 2016.
 // Distributed under the Apache 2 License.
 
-/*
 
 package XJ.pika
 
@@ -12,7 +11,8 @@ import java.nio.file._
 import scala.util._
 import scala.util.control.NonFatal
 
-import minij._
+import kse.jsonal._
+import JsonConverters._
 
 class Treeverse[A](
   val me: Path,
@@ -21,8 +21,8 @@ class Treeverse[A](
   val zips: Array[Path],
   val links: Array[Path],
   val value: A
-)(implicit ev: MiniJ[A]) extends ToJs {
-  import Treeverse.pathHasAMiniJ
+)(implicit jser: Jsonize[A]) extends AsJson {
+  import Treeverse.pathCanJsonize
   override def hashCode = me.hashCode
   override lazy val toString = 
     if (sub.isEmpty && files.isEmpty && zips.isEmpty && links.isEmpty) s"'$me'"
@@ -31,43 +31,60 @@ class Treeverse[A](
     case tv: Treeverse[_] => me == tv.me && value == tv.value
     case _ => false
   }
-  def mapValues[B: MiniJ](f: Treeverse[A] => B): Treeverse[B] = new Treeverse[B](me, sub.map(_.mapValues(f)), files, zips, links, f(this))
+  def mapValues[B: Jsonize](f: Treeverse[A] => B): Treeverse[B] = new Treeverse[B](me, sub.map(_.mapValues(f)), files, zips, links, f(this))
   def foreach[U](f: Treeverse[A] => U) { f(this); sub.foreach(_.foreach(f)) }
   def foreachPath[U](f: Path => U) { f(me); files.foreach(f); zips.foreach(f); links.foreach(f); sub.foreach(_.foreachPath(f)) }
   def foreachFile[U](f: Path => U) { files.foreach(f); sub.foreach(_.foreachFile(f)) }
   def foreachZip[U](f: Path => U) { zips.foreach(f); sub.foreach(_.foreachZip(f)) }
-  def toJson =
-    JObj ~ ("me", me) ~ ("sub", sub) ~ ("files", files) ~ ("zips", zips) ~ ("links", links) ~ ("value", value) ~ JObj
+  def json =
+    Json ~ ("me", me) ~ ("sub", sub) ~ ("files", files) ~ ("zips", zips) ~ ("links", links) ~ ("value", value) ~ Json
 }
 
 object Treeverse {
-  implicit val pathHasAMiniJ: MiniJ[Path] = new MiniJ[Path] { def asJs(p: Path) = JStr(p.toString) }
+  implicit val pathCanJsonize: Jsonize[Path] = new Jsonize[Path] { def jsonize(p: Path) = Json(p.toString) }
 
-  def parser[A](mkJ: FromJson[A])(implicit ev: MiniJ[A]): FromJson[Treeverse[A]] = new FromJson[Treeverse[A]] {
-    def parse(js: Js): Treeverse[A] = js match {
-      case j: JObj =>
-        var mestr: String = null
-        var subarr: Array[Treeverse[A]] = Array()
-        var files: Array[Path] = emptyPaths
-        var zips: Array[Path] = emptyPaths
-        var links: Array[Path] = emptyPaths
-        var vj: Js = null
-        var i = 0
-        while (i < j.kvs.length-1) {
-          j.kvs(i).asInstanceOf[JStr].value match {
-            case "me" => mestr = j.kvs(i+1).asInstanceOf[JStr].value
-            case "sub" => subarr = j.kvs(i+1).asInstanceOf[JArr].values.map(x => parse(x))
-            case "files" => files = j.kvs(i+1).asInstanceOf[JArr].values.map(x => (new File(x.asInstanceOf[JStr].value)).toPath)
-            case "zips" => zips = j.kvs(i+1).asInstanceOf[JArr].values.map(x => (new File(x.asInstanceOf[JStr].value)).toPath)
-            case "links" => links = j.kvs(i+1).asInstanceOf[JArr].values.map(x => (new File(x.asInstanceOf[JStr].value)).toPath)
-            case "value" => vj = j.kvs(i+1)
+  val pathFromJson: FromJson[Path] = new FromJson[Path] {
+    def parse(js: Json): Either[JastError, Path] = js match {
+      case Json.Str(text) =>
+        try Right((new File(text)).toPath)
+        catch { case NonFatal(_) => Left(JastError("Not a path: "+text)) }
+      case _ => Left(JastError("Path not represented as a string?"))
+    }
+  }
+
+  def parser[A](mkA: FromJson[A])(implicit jser: Jsonize[A]): FromJson[Treeverse[A]] = new FromJson[Treeverse[A]] {
+    def parse(js: Json): Either[JastError, Treeverse[A]] = js match {
+      case j: Json.Obj =>
+        val me = j("me") match { 
+          case je: JastError => return Left(je)
+          case js: Json => pathFromJson.parse(js) match {
+            case Left(e) => return Left(e)
+            case Right(p) => p
           }
-          i += 2
         }
-        if (mestr == null || i > 12)
-          throw new IllegalArgumentException("Missing or duplicate fields in Entity")
-        new Treeverse((new File(mestr)).toPath, subarr, files, zips, links, mkJ parse vj)
-      case _ => throw new IllegalArgumentException("Expected JSON corresponding to Treeverse, but not even an object")
+        val subarr: Array[Treeverse[A]] = j("sub") match {
+          case ja: Json.Arr => parseArray(ja) match {
+            case Left(e) => return Left(e)
+            case Right(a) => a
+          }
+          case _ => return Left(JastError("No array for 'sub' field"))
+        }
+        val List(files, zips, links) = List("files", "zips", "links").map(name => j(name) match {
+          case ja: Json.Arr => pathFromJson.parseArray(ja) match {
+            case Left(e) => return Left(e)
+            case Right(a) => a
+          }
+          case _ => return Left(JastError("No array for '" + name + "' field"))
+        })
+        val value: A = j("value") match { 
+          case je: JastError => return Left(je)
+          case js: Json => mkA.parse(js) match {
+            case Left(e) => return Left(e)
+            case Right(a) => a
+          }
+        }
+        Right(new Treeverse(me , subarr, files, zips, links, value))
+      case _ => Left(JastError("Expected JSON corresponding to Treeverse, but not even an object"))
     }
   }
   
@@ -124,4 +141,3 @@ object Treeverse {
   def apply(root: String): Try[Treeverse[Boolean]] = apply(new File(root))
 }
 
-*/
